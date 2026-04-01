@@ -1,163 +1,77 @@
 #include <iostream>
-#include <algorithm>
-#include <vector>
-#include <cstdint>
+#include <string>
+#include "bitset.h" 
 
-class Bitset {
-private:
-    uint64_t* data;
-    size_t size;
-    static size_t number_of_blocks (size_t bits) {
-        return (bits + 63)/64;
+void print_set(const std::string& name, const Bitset& bitset) {
+    std::cout << name << " (size: " << bitset.size() << ", empty: ";
+    if (bitset.empty()) {
+        std::cout << "true";
+    } else {
+        std::cout << "false";
     }
-public:
-    Bitset() : size(64) {
-        data = new uint64_t[1]();
-    }
-
-    explicit Bitset(size_t size_) : size(size_) {
-        if (size_ != 0) {
-            data = new uint64_t[number_of_blocks(size_)]();
-        } else {
-            data = nullptr; 
-        }
-    }
-
-    ~Bitset() {
-        delete[] data;
-    }
-
-    Bitset(const Bitset& other) : size(other.size) {
-        if (other.size != 0) {
-            size_t blocks = number_of_blocks(other.size);
-            data = new uint64_t[blocks]();
-            std::copy(other.data,other.data+blocks,data);
-        } else {
-            data = nullptr;
-        }
-    }   
-    Bitset& operator=(const Bitset other) {
-        if (this != &other) {
-            Bitset temp(other);
-            std::swap(data,temp.data);
-            std::swap(size,temp.size);
-        }
-        return *this;
-    }
-
-    Bitset(Bitset&& other) noexcept : data(other.data), size(other.size) {
-        other.data = nullptr;
-        other.size = 0;    
-    }
-
-    Bitset& operator=(Bitset&& other) noexcept {
-        if (this != &other) {
-            delete[] data;
-            data = other.data;
-            size = other.size;
-            other.data = nullptr;
-            other.size = 0;
-        }
-        return *this;
-    }
-
-    void set(size_t k, bool b) {
-        if (k >= size) {
-            if (!b) {
-                return;
+    std::cout << "): {";
+    bool first = true;
+    for (size_t i = 0; i < 150; ++i) {
+        if (bitset[i]) {
+            if (!first) {
+                std::cout << ", ";
             }
-            size_t new_size = std::max(k+1,size*2);
-            size_t old_blocks = number_of_blocks(size);
-            size_t new_blocks = number_of_blocks(new_size);
-
-            uint64_t* new_data = new uint64_t[new_blocks]();
-            if (data) {
-                std::copy(data,data+old_blocks,new_data);
-                delete[] data;
-            }
-            data = new_data;
-            size = new_size;
-        }
-        size_t block = k/64;
-        size_t bit = k%64;
-
-        if (b) {
-            data[block] |= (1ULL << bit);
-        } else {
-            data[block] &= ~(1ULL << bit);
+            std::cout << i;
+            first = false;
         }
     }
+    std::cout << "}\n";
+}
 
-    bool test(size_t k) const {
-        if (k >= size) {
-            return false;
-        }
-        size_t block = k/64;
-        size_t bit = k%64;
-        return (data[block] & (1ULL << bit)) != 0;
-    }
+int main() {
+    std::cout << "Проверка set, test, []\n";
+    Bitset b1(10);
+    b1.set(2, true);
+    b1.set(5, true);
+    b1.set(9, true);
+    print_set("b1", b1);
 
-    bool operator[](size_t k) const {
-        return test(k);
-    }
+    std::cout << "\nПроверяем реаллокацию добавляя 100 в b1\n";
+    b1.set(100, true);
+    print_set("b1 после расширения", b1);
 
-    Bitset union_with(const Bitset& other) const {
-        size_t max_bits = std::max(size,other.size);
-        Bitset result(max_bits);
+    std::cout << "\nПроверка конструкторов из правила пяти\n";
+    Bitset b2 = b1;
+    b2.set(100, false);
+    print_set("b2 (копия b1, удален 100)", b2);
+    print_set("b1 (оригинал не изменился)", b1);
 
-        size_t blocks1 = number_of_blocks(size);
-        size_t blocks2 = number_of_blocks(other.size);
-        size_t max_blocks = std::max(blocks1,blocks2);
+    Bitset b3 = std::move(b2);
+    print_set("b3 (перемещен из b2)", b3);
+    std::cout << "Емкость b2 после move: " << b2.size() << "\n\n";
 
-        for (size_t i = 0; i != max_blocks; ++i) {
-            uint64_t value1 = (i < blocks1) ? data[i] : 0;
-            uint64_t value2 = (i < blocks2) ? other.data[i] : 0;
-            result.data[i] = value1 | value2;
-        }
-        return result;
-    }
+    std::cout << "Проверка теоретико-множественных операций\n";
+    Bitset A(32);
+    A.set(1, true); A.set(3, true); A.set(10, true);
+    
+    Bitset B(64);
+    B.set(3, true); B.set(10, true); B.set(20, true);
 
-    Bitset intersection(const Bitset& other) const {
-        size_t min_bits = std::min(size,other.size);
-        Bitset result(min_bits);
+    print_set("Множество A", A);
+    print_set("Множество B", B);
 
-        size_t min_blocks = number_of_blocks(min_bits);
-        for (size_t i = 0; i != min_blocks; ++i) {
-            result.data[i] = data[i] & other.data[i];
-        }
-        return result;
-    }
+    Bitset U = A.union_with(B);
+    print_set("Объединение (A union B)", U);
 
-    bool is_subset(const Bitset& other) const {
-        size_t blocks1 = number_of_blocks(size);
-        size_t blocks2 = number_of_blocks(other.size);
+    Bitset I = A.intersection(B);
+    print_set("Пересечение (A intersect B)", I);
 
-        for (size_t i = 0; i != blocks1; ++i) {
-            uint64_t value1 = data[i];
-            uint64_t value2 = (i < blocks2) ? other.data[i] : 0;
-            
-            if ((value1 & ~value2) != 0) {
-                return false;
-            }
-        }
-        return true;
-    }
+    std::cout << "\nПроверка is_subset\n";
+    Bitset sub(10);
+    sub.set(3, true); sub.set(10, true);
+    print_set("Множество sub", sub);
+    
+    std::cout << "sub является подмножеством A? : " << (sub.is_subset(A) ? "Да" : "Нет") << "\n";
+    std::cout << "A является подмножеством sub? : " << (A.is_subset(sub) ? "Да" : "Нет") << "\n\n";
 
-    size_t size() const {
-        return size;
-    }
+    std::cout << "Проверка clear\n";
+    A.clear();
+    print_set("Множество A после clear()", A);
 
-    bool empty() {
-        size_t blocks = number_of_blocks(size);
-        for (size_t i = 0; i != blocks; ++i) {
-            if (data[i] != 0) return false;
-        }
-        return true;
-    }
-
-    void clear() {
-        size_t blocks = number_of_blocks(size);
-        delete[] data;
-        data = new uint64_t[blocks]();    
-    }
-};
+    return 0;
+}
